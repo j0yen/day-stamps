@@ -1,0 +1,81 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "/home/jsy/wintermute/autobuilder/PRD-daily-receipt-stamps.md",
+  "intent_slug": "daily-receipt-stamps",
+  "created_at": "2026-05-28T16:12:00Z",
+  "root_motivation": "Special days deserve a stamp rather than a haiku or a glyph fallback — birthdays, anniversaries, the day a PRD shipped, the day the printer arrived. PRD-daily-receipt's classifier already returns `special` when summary.special_stamp_id is set; that field is the integration point. This PRD writes the producer for that field: the stamp catalog format (date-specific + recurring JSON files), a manage-stamps CLI (day-stamp add|list|render|which|seed), and the lookup convention that day-summarize and day-haiku already cite. Without this crate the third day-type in the daily-receipt vision (workday/quiet/special) is unreachable.",
+  "user_persona": "Joe Yen on wintermute. Wants stamps that fire on special dates so the daily strip carries texture: 'printer-arrives' on 2026-05-27, 'New Year' recurring on 01-01, birthdays added with `day-stamp add`. Catalog lives at $XDG_CONFIG_HOME/daily-receipt/stamps/ with ~/.claude/ fallback. Lookup is deterministic: date-specific (YYYY-MM-DD.json) shadows recurring (MM-DD.json). Producer for daily-receipt's special path; consumer side is daily-receipt-printer's today flow which shells out to `day-stamp render today --out <path>` when summary.special_stamp_id is set.",
+  "unfakeable_metric": {
+    "name": "acceptance_tests_passing_count",
+    "lower_is_better": false,
+    "harness_command": "cargo test --release --tests 2>&1 | grep -E '^test acceptance_' | wc -l",
+    "target": 9
+  },
+  "acceptance_criteria": [
+    {"id": "AC1", "level": "MUST", "description": "`day-stamp seed` against an empty $XDG_CONFIG_HOME/daily-receipt/stamps/ writes 4 starter stamp files. Re-running `seed` does not overwrite; exits 0.", "test": "tests/acceptance_ac1_seed_idempotent.rs"},
+    {"id": "AC2", "level": "MUST", "description": "`day-stamp which 2026-05-27` prints `printer-arrives` to stdout. `which 2026-05-28` (no stamp) prints nothing and exits 0.", "test": "tests/acceptance_ac2_which.rs"},
+    {"id": "AC3", "level": "MUST", "description": "`day-stamp which 2026-01-01` matches the recurring `01-01.json` stamp. Verified for at least two distinct years (2026, 2030) in the same test.", "test": "tests/acceptance_ac3_recurring.rs"},
+    {"id": "AC4", "level": "MUST", "description": "Date-specific stamp file shadows the recurring file for the same MM-DD: when both `2026-12-31.json` and `12-31.json` exist, `which 2026-12-31` returns the date-specific one.", "test": "tests/acceptance_ac4_shadow.rs"},
+    {"id": "AC5", "level": "MUST", "description": "`day-stamp add --id foo --title T --date 2026-05-30 --line \"Hello\"` creates `2026-05-30.json` with the expected shape; running again with the same `--id` and date errors with exit 4 (no silent overwrite).", "test": "tests/acceptance_ac5_add_collision.rs"},
+    {"id": "AC6", "level": "MUST", "description": "`day-stamp render printer-arrives --out /tmp/p.escpos` writes a non-empty ESC/POS byte stream that begins with ESC '@' (0x1B 0x40), contains the stamp title bytes verbatim, ends with feed-and-cut bytes (0x1D 0x56 0x42 0x00). Daily-receipt AC2 compatibility.", "test": "tests/acceptance_ac6_render_bytes.rs"},
+    {"id": "AC7", "level": "MUST", "description": "`day-stamp render` with no `lines` and `glyph_seed: 42` renders a 24x24 raster glyph (reuses daily-receipt's renderer via dep, or shells out to `daily-receipt render` with a fake summary — pick the simpler path).", "test": "tests/acceptance_ac7_glyph_only.rs"},
+    {"id": "AC8", "level": "MUST", "description": "`day-stamp list --json` prints a JSON array of all stamps with full metadata; sortable by `created_at`.", "test": "tests/acceptance_ac8_list_json.rs"},
+    {"id": "AC9", "level": "MUST", "description": "Each stamp file's `lines` violating the schema (>=13 lines, or line >40 graphemes) is rejected at `add`-time with exit 5; `render`-time of an existing-but-malformed file also exits 5 with the offending line numbered in stderr.", "test": "tests/acceptance_ac9_schema_violation.rs"}
+  ],
+  "scope": [
+    "Binary `day-stamp` with subcommands: which [date], list [--kind K] [--json], add --id --title --date --line ... [--kind] [--category] [--size-hint] [--glyph-seed], render <id|today> --out <path>, seed",
+    "Source layout: src/main.rs (clap dispatch), src/lib.rs (re-exports), src/catalog.rs (file IO + date/recurring lookup + shadow rule), src/render.rs (ESC/POS bytes assembly: ESC@ init, centered title/subtitle/lines, feed lines per size_hint, GS V B 0 cut), src/validate.rs (lines count 1..=12, grapheme width <=40, kind enum)",
+    "Catalog location: $XDG_CONFIG_HOME/daily-receipt/stamps/ (XDG_CONFIG_HOME default ~/.config); fallback ~/.claude/daily-receipt/stamps/",
+    "Stamp JSON schema: { id, kind: birthday|anniversary|milestone|named-day|custom, title, subtitle, lines: [..], glyph_seed: Option<u64>, size_hint: small|medium|large, category, created_by, created_at }",
+    "Date-specific file <YYYY-MM-DD>.json shadows recurring <MM-DD>.json; both are checked; date-specific wins; `which` returns the id of the winning stamp or empty on no match",
+    "Seed catalog (4 files; idempotent, never overwrite): 01-01.json New Year (recurring), 12-31.json Year ends (recurring), 2026-05-27.json Printer arrives, 2026-05-22.json Daily-receipt PRD drafted",
+    "Atomic writes (tempfile + rename) for add and seed; same filesystem rename for atomicity",
+    "Exit codes — 0:success/no-match-with-empty-output, 2:bad CLI args, 4:add collision (id+date duplicate), 5:schema violation",
+    "Deps strictly: clap, chrono, serde, serde_json, toml. NO network. NO unsafe. Optional dep on `unicode-segmentation` for grapheme width — count as 1 of max_deps",
+    "LOC budget: <=350 src, <=300 tests per PRD §Crate shape"
+  ],
+  "non_goals": [
+    "TUI / web-based stamp composer — v0.2",
+    "Automatic milestone detection (build skill writing stamps/<today>.json on ship) — separate follow-on PRD",
+    "Notifications when a stamp fires — discovered by reading the strip",
+    "Stamp drawing tools — stamps are hand-edited JSON in v0.1"
+  ],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": true,
+    "max_deps": 12,
+    "msrv": "1.85",
+    "additional": {
+      "binary_install_path": "~/.local/bin/day-stamp",
+      "dual_license": "MIT+Apache-2.0",
+      "github_repo": "j0yen/day-stamps",
+      "catalog_xdg_subpath": "daily-receipt/stamps",
+      "catalog_fallback": "~/.claude/daily-receipt/stamps",
+      "consumes_from": "daily-receipt (for AC7 glyph render fallback)",
+      "consumed_by": ["day-summarize (reads which/<date> to set summary.special_stamp_id)", "day-haiku (skips composition when special_stamp_id is set)", "daily-receipt-printer (today flow calls day-stamp render when special_stamp_id is set)"]
+    }
+  },
+  "five_whys_trace": [
+    {"why": 1, "q": "Why build day-stamps?",
+     "a": "PRD-daily-receipt §3 named 'Stamp (special day)' as the third day-type but did not specify storage format or selection rules. daily-receipt/src/classifier.rs already returns `special` when summary.special_stamp_id is set; that field is the integration point. Without this crate the third day-type is unreachable and the strip's texture stays at workday/quiet only."},
+    {"why": 2, "q": "Why a separate crate rather than extending daily-receipt?",
+     "a": "daily-receipt is pure-byte-stream and testable without devices. Stamps are content (catalog + renderer) — different lifecycle. Day-summarize and day-haiku need to query 'is today special?' without pulling the byte-encoding harness. Separate crate keeps both pure: daily-receipt produces bytes from a summary, day-stamps produces bytes from a stamp id."},
+    {"why": 3, "q": "Why JSON files keyed by date rather than a SQLite ledger or TOML manifest?",
+     "a": "One stamp per file makes hand-editing in $EDITOR trivial, makes `cp` / `git mv` / version control work without parsing logic, and matches the existing daily-receipt convention of ~/.claude/daily-receipt/<date>.json for daily payloads. Lookup is just a stat(2) on two paths (date-specific then recurring)."},
+    {"why": 4, "q": "Why both date-specific (YYYY-MM-DD) and recurring (MM-DD) with date-specific shadowing?",
+     "a": "Recurring captures the structural rhythm (New Year, anniversaries). Date-specific captures the one-shot milestone (the day the printer arrived). The shadow rule means a recurring 12-31 stamp can be overridden for one specific year — e.g., a year-end-letter PRD that ships its own 2026-12-31.json with the longer strip without disturbing the base recurring entry."},
+    {"why": 5, "q": "Why atomic writes (tempfile + rename) for add when the catalog isn't multi-writer?",
+     "a": "/build runs every 5 minutes and the user may run `day-stamp add` interactively; if a tick's write races with an interactive read, partial JSON would crash the consumer. rename(2) is atomic on the same filesystem; tempfile-in-same-dir + rename is the cheapest correctness story. Mirror of daily-receipt-printer's AC4 atomicity model."}
+  ],
+  "ambiguities_resolved": [
+    {"question": "How is the catalog directory created on first use?",
+     "resolution": "`day-stamp seed` runs fs::create_dir_all on the resolved catalog path (XDG first, fallback ~/.claude). `which`/`list` create the dir only if no stamp files exist and return empty results — no error on first-use empty catalog."},
+    {"question": "What does `day-stamp render today` do when no stamp matches today?",
+     "resolution": "Exits 0 with no output. The printer wrapper checks `which today` first (which is the canonical 'is today special?' query) and only calls `render today` when that is non-empty. Defensive: `render <id>` for an explicit id that doesn't exist exits with code 5 (schema/lookup violation)."},
+    {"question": "AC7 glyph-only render — does day-stamps depend on daily-receipt as a path dep, or shell out?",
+     "resolution": "Shell out to `daily-receipt render --glyph-seed N --quiet --out <path>` when stamp.lines is empty and stamp.glyph_seed is Some. Path resolution: $DAILY_RECEIPT_BIN > `which daily-receipt`. Mirrors daily-receipt-printer's resolution. Falls back to a stub 24x24 raster (all-on pixels) if daily-receipt is unavailable so AC7 is verifiable in isolation."},
+    {"question": "AC9 schema-violation at render time — what bytes go to stderr?",
+     "resolution": "Format: `day-stamp: invalid stamp <path>: line <N>: <reason>` where N is 1-indexed and reason is one of `>40 graphemes (got G)` or `too many lines (got L, max 12)`. Exit 5. No partial bytes written to --out."}
+  ]
+}

@@ -1,0 +1,8 @@
+/target
+Cargo.lock.bak
+**/*.bak.*
+target/autobuilder/clippy.json
+target/autobuilder/test-output.txt
+target/autobuilder/run.log
+target/autobuilder/audit.json
+target/autobuilder/mutants/
