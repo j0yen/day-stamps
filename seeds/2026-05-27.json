@@ -1,0 +1,18 @@
+{
+  "id": "printer-arrives",
+  "kind": "milestone",
+  "title": "The MASUNG IP1000 lands",
+  "subtitle": "2026-05-27",
+  "lines": [
+    "* * *",
+    "The printer is here.",
+    "Paper en route.",
+    "Daily ritual begins.",
+    "* * *"
+  ],
+  "glyph_seed": null,
+  "size_hint": "medium",
+  "category": "device-milestone",
+  "created_by": "jsy",
+  "created_at": "2026-05-27T22:00:00-07:00"
+}

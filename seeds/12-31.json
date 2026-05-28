@@ -1,0 +1,16 @@
+{
+  "id": "year-ends",
+  "kind": "named-day",
+  "title": "Year ends",
+  "subtitle": "The scroll rolls up",
+  "lines": [
+    "* * *",
+    "The year closes.",
+    "* * *"
+  ],
+  "glyph_seed": null,
+  "size_hint": "large",
+  "category": "calendar",
+  "created_by": "jsy",
+  "created_at": "2026-05-27T22:00:00-07:00"
+}
